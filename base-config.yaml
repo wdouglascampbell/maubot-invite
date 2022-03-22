@@ -45,5 +45,17 @@ message: |
 expiration: 3
 
 # approved members who can generate invite tokens
+# e.g.
+# - 'sso:cas'  <- all users authenticated using the CAS SSO provider
 admins:
 - '@admin:yourwebsite.com'
+
+# access token with permissions to homeserve admin api
+# e.g.
+# admin_access_token: syt_ZGNhbXBiZWxs_rQjWtNyaoEGoEQiqCQuz_3zH8MR
+admin_access_token:
+
+# url for accessing the admin api
+# e.g.
+# admin_api_url: https://matrix.org
+admin_api_url:

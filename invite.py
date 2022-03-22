@@ -16,6 +16,8 @@ class Config(BaseProxyConfig):
         helper.copy("admins")
         helper.copy("expiration")
         helper.copy("message")
+        helper.copy("admin_access_token")
+        helper.copy("admin_api_url")
 
 class Invite(Plugin):
     async def start(self) -> None:
@@ -27,10 +29,47 @@ class Invite(Plugin):
         return Config
 
     async def can_manage(self, evt: MessageEvent) -> bool:
+        # check if access_token is defined
+        if self.config["admin_access_token"]:
+            # check if CAS SSO users are listed as admins
+            if 'sso:cas' in self.config["admins"]:
+                if await self.is_cas_user(evt):
+                    return True
+
+        # check if sender is specifically listed as an admin
         if evt.sender in self.config["admins"]:
             return True
-        else:
-            await evt.respond("You don't have permission to manage invitations for this server.")
+
+        # sender cannot manage
+        await evt.respond("You don't have permission to manage invitations for this server.")
+        return False
+
+    async def is_cas_user(self, evt: MessageEvent) -> bool:
+        # retrieve user_profile information
+        headers = {
+            'Authorization': f"Bearer {self.config['admin_access_token']}",
+            'Content-Type': 'application/json'
+            }
+
+        try:
+            response = await self.http.get(f"{self.config['admin_api_url']}/_synapse/admin/v2/users/{evt.sender}", headers=headers)
+            status = response.status
+            resp_json = await response.json()
+        except Exception as e:
+            body = await response.text()
+            await evt.respond(f"Uh oh! I got a {status} response from your admin endpoint:<br /> \
+                        {body}<br /> \
+                        which prompted me to produce this error:<br /> \
+                        <code>{e.message}</code>", allow_html=True)
+            return False
+
+        try:
+            external_ids = resp_json['external_ids']
+            for i in external_ids:
+                if i['auth_provider'] == 'cas':
+                    return True
+            return False
+        except Exception as e:
             return False
 
     def set_api_endpoints(self) -> None:
@@ -65,7 +104,7 @@ class Invite(Plugin):
             'Authorization': f"SharedSecret {self.config['admin_secret']}",
             'Content-Type': 'application/json'
             }
-        
+
         try:
             response = await self.http.post(f"{self.config['api_url']}/token", headers=headers, \
                     json={"max_usage": 1, "one_time": True, "ex_date": ex_date, "expiration_date": ex_date})
@@ -99,7 +138,7 @@ class Invite(Plugin):
         if self.config['message']:
             msg = self.config["message"].format(token=token, reg_url=self.config['reg_url'],
                     reg_page=self.config['reg_page'], expiration=self.config['expiration'])
-        
+
         await evt.respond(msg, allow_html=True)
 
     @invite.subcommand("status", help="Return the status of an invite token.")
@@ -126,7 +165,7 @@ class Invite(Plugin):
         except Exception as e:
             await evt.respond(f"request failed: {e.message}")
             return None
-        
+
         # this isn't formatted nicely but i don't really care that much
         await evt.respond(f"Status of token {token}: \n<pre><code format=json>{json.dumps(resp_json, indent=4)}</code></pre>", allow_html=True)
 
@@ -166,7 +205,7 @@ class Invite(Plugin):
             except Exception as e:
                 await evt.respond(f"request failed: {e.message}")
                 return None
-        
+
         # this isn't formatted nicely but i don't really care that much
         await evt.respond(f"<pre><code format=json>{json.dumps(resp_json, indent=4)}</code></pre>", allow_html=True)
 
@@ -189,6 +228,6 @@ class Invite(Plugin):
         except Exception as e:
             await evt.respond(f"request failed: {e.message}")
             return None
-        
+
         # this isn't formatted nicely but i don't really care that much
         await evt.respond(f"<pre><code format=json>{json.dumps(resp_json, indent=4)}</code></pre>", allow_html=True)
